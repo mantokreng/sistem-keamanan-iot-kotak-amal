@@ -1,7 +1,6 @@
 // Kode program rancang bangun sistem keamanan kotak amal berbasis wemos dan internet of things
 
 // library yang digunakan
-#include <ESP8266HTTPClient.h>
 #include <ESP8266WiFi.h> // koneksi ke internet
 #include <ThingESP.h> // koneksi ke ThingESP
 #include <SoftwareSerial.h>
@@ -21,14 +20,14 @@ SoftwareSerial mySerial(D1,D3); // TX/RX pada fingerprint
 long timer;
 int jarak;
 uint8_t id;
+Servo motorservo;
 
 
 // inisialisasi kondisi tetap dari sistem
 ThingESP8266 thing("kingsalman", "KotakAmal", "salman");
-WiFiClient client;
 Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
 LiquidCrystal_I2C lcd(0x27,16,2);
-Servo motorservo;
+
 
 
 void setup() {
@@ -47,9 +46,10 @@ void setup() {
       // mode perangkat
       motorservo.attach(pinServo);
       pinMode(pinBuzzer, OUTPUT); // buzzer
+      digitalWrite(pinBuzzer, LOW);
   
       // sambungan koneksi ke jaringan WiFi
-      thing.SetWiFi("SalmanConnect", "kingsalman");
+      thing.SetWiFi("WiFi Lantai 1 1", "");
       thing.initDevice();
   
       delay(100);
@@ -72,10 +72,13 @@ void setup() {
 }
 
 void loop() {
+      digitalWrite(pinBuzzer, LOW);
+
       // proses kerja sensor sidik jari
       getFingerprintID();
       delay(500);
-    
+      thing.Handle();
+      kirimPesan(jarak);
       // proses kerja sensor ultrasonik
       digitalWrite(TRIGPIN, LOW);             
       delayMicroseconds(2);
@@ -84,10 +87,10 @@ void loop() {
       digitalWrite(TRIGPIN, LOW);
       timer = pulseIn(ECHOPIN, HIGH);
       jarak = timer*0.034/2;
-      thing.Handle();
+      
       delay(1000);
-
-      kirimPesan(jarak);
+      
+      
       Serial.print("Jarak = ");
       Serial.print(jarak);
       Serial.print(" cm");
@@ -100,24 +103,45 @@ void loop() {
           if (p == FINGERPRINT_OK) {
             p = finger.fingerSearch();
             if (p == FINGERPRINT_OK) {
-    
+              motorservo.write(180);
+              String msg = "Akses masuk melalui sidik jari diterima";
+              thing.sendMsg("6289652365000", msg);
+              digitalWrite(pinBuzzer, HIGH);
+              delay(1000);
+              digitalWrite(pinBuzzer, LOW);
               lcd.clear();
               lcd.setCursor(0, 0);
               lcd.print("   SIDIK JARI   ");
               lcd.setCursor(0, 1);
               lcd.print("    DIKENALI    ");
+              delay(5000);
+              lcd.clear();
+              lcd.setCursor(0,0);
+              lcd.print("SISTEM  KEAMANAN");
+              lcd.setCursor(0,1);
+              lcd.print("KOTAK AMAL:AKTIF");
+              delay(10000);
             }
           }
               p = finger.fingerSearch();
               if (p == FINGERPRINT_NOTFOUND) {
-      
-                 lcd.clear();
-                lcd.setCursor(0, 0);
-                lcd.print("   SIDIK JARI   ");
-                lcd.setCursor(0, 1);
-                lcd.print(" TIDAK  DIKENAL ");
+              motorservo.write(0);
+              String msg = "Akses masuk melalui sidik jari ditolak!";
+              thing.sendMsg("6289652365000", msg);
+              lcd.clear();
+              lcd.setCursor(0, 0);
+              lcd.print("   SIDIK JARI   ");
+              lcd.setCursor(0, 1);
+              lcd.print(" TIDAK  DIKENAL ");
+              delay(3000);
+              lcd.clear();
+              lcd.setCursor(0,0);
+              lcd.print("SISTEM  KEAMANAN");
+              lcd.setCursor(0,1);
+              lcd.print("KOTAK AMAL:AKTIF");
             }
       }
+      digitalWrite(pinBuzzer, LOW);
 }
        
 
@@ -175,18 +199,13 @@ uint8_t getFingerprintID() {
     return p;
   } else if (p == FINGERPRINT_NOTFOUND) {
     Serial.println("Did not find a match");
-    motorservo.write(0);
-    String msg = "Akses masuk melalui sidik jari ditolak!";
-    thing.sendMsg("6289652365000", msg);
     return p;
   }
 
 // found a match!
     Serial.print("Found ID #"); Serial.print(finger.fingerID);
     Serial.print(" with confidence of "); Serial.println(finger.confidence);
-    motorservo.write(180);
-    String msg = "Akses masuk melalui sidik jari diterima";
-    thing.sendMsg("6289652365000", msg);
+   
     return finger.fingerID;
 }
 
@@ -210,15 +229,16 @@ int getFingerprintIDez() {
 }
 
 void kirimPesan(int nilai){
-  if(nilai >= 10){
+  if((nilai >= 10) && (nilai <= 500)){
+    digitalWrite(pinBuzzer, HIGH);
     String msg = "Kotak Amal Sedang dibawa pergi!";
     thing.sendMsg("6289652365000", msg);
-    Serial.print("Jarak = ");
-    Serial.print(jarak);
-    Serial.print(" cm");
-    Serial.println();
-    delay(10000);
-    digitalWrite(pinBuzzer, HIGH);
+//    Serial.print("Jarak = ");
+//    Serial.print(jarak);
+//    Serial.print(" cm");
+//    Serial.println();
+//    delay(10000);
+    
    }
 }
 
@@ -251,13 +271,17 @@ String HandleResponse(String query)
   }
 
    if (query == "buka") {
-   motorservo.write(180); 
+   motorservo.write(180);
+   digitalWrite(pinBuzzer, HIGH);
+   delay(1000);
+   digitalWrite(pinBuzzer, LOW);
    lcd.setCursor(0,0);
    lcd.print("SISTEM  KEAMANAN");
    lcd.setCursor(0,1);
    lcd.print("KOTAK AMAL: MATI");
    return "Kotak amal dalam keadaan terbuka";   
   }
-  
+
+
   else return "Kata kuncinya salah";
 }
